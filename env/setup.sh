@@ -23,6 +23,13 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "WARNING: ffmpeg not found. Install it before running the pipeline: sudo apt install ffmpeg" >&2
 fi
 
+echo "== Accepting Anaconda default channel Terms of Service =="
+# Newer conda refuses to create envs from repo.anaconda.com channels
+# non-interactively until ToS is accepted. Older conda has no `tos`
+# subcommand at all, so failures here are expected and harmless.
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r || true
+
 echo "== Creating conda environment '$CONDA_ENV_NAME' (python 3.10) =="
 if ! conda env list | awk '{print $1}' | grep -qx "$CONDA_ENV_NAME"; then
     conda create -n "$CONDA_ENV_NAME" python=3.10 -y
