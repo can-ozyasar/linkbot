@@ -20,7 +20,7 @@ env/setup.sh          One-shot installer: conda env, PyTorch, lingbot-map,
                        FlashInfer, Kaolin, CUDA extensions, checkpoint download
 env/verify_gpu.py      Post-setup smoke test (run automatically at the end of setup.sh)
 config/office_indoor.yaml   Render preset: indoor scene, follow (chase) camera
-scripts/run_pipeline.sh     Runs the pipeline on one video
+scripts/run_pipeline.sh     Auto-processes every video in data/ (or one via --video)
 data/                  Drop your office video here (gitignored — never committed)
 outputs/               Rendered MP4s + per-frame NPZ predictions land here (gitignored)
 third_party/           Cloned lingbot-map source (created by setup.sh, gitignored)
@@ -56,36 +56,61 @@ that happens.
 
 ## Running the pipeline
 
+Drop one or more videos into `data/` and run the script with no arguments —
+it auto-discovers every video there and processes each one:
+
 ```bash
 conda activate lingbot-map
 cp /path/to/office_walkthrough.mp4 data/
-bash scripts/run_pipeline.sh --video data/office_walkthrough.mp4
+bash scripts/run_pipeline.sh
 ```
 
-Output lands in `outputs/office_walkthrough/`:
+Re-running is safe: videos that already have output under `outputs/` are
+skipped, so you can drop in a new file later and just re-run the same
+command. If one video in a batch fails, the rest still run — failures are
+summarized at the end and the script exits non-zero if any occurred.
+
+To process a single specific file instead of scanning `data/` (e.g. it lives
+elsewhere, or you want a custom output name):
+
+```bash
+bash scripts/run_pipeline.sh --video /path/to/office_walkthrough.mp4 --name office
+```
+
+Output lands in `outputs/<video-name>/` (named after the input file):
 
 | File | Description |
 |---|---|
-| `office_walkthrough_pointcloud.mp4` | Rendered point-cloud flythrough |
-| `office_walkthrough_pointcloud_rgb.mp4` | Original RGB frames as video |
-| `office_walkthrough_pointcloud_config.yaml` | Full config snapshot of this run |
-| `*.npz` (from `--save_predictions`) | Per-frame predictions, for re-rendering with different camera settings later |
+| `<name>_pointcloud.mp4` | Rendered point-cloud flythrough |
+| `<name>_pointcloud_rgb.mp4` | Original RGB frames as video |
+| `<name>_pointcloud_config.yaml` | Full config snapshot of this run |
+| `<name>.npz` (from `--save_predictions`) | Saved predictions for the whole scene, for re-rendering with different camera settings later without re-running inference |
 
-`run_pipeline.sh` probes the video with `ffprobe` and auto-picks a
+**Format:** every `.mp4` above is normalized to **H.264 (libx264) / yuv420p**
+after rendering — the most universally compatible combination, playable in
+any browser, Windows Media Player, QuickTime, and VLC with no extra codecs.
+This matters because lingbot-map's own encoder silently falls back to the
+less-compatible `mp4v` codec for some of these files if anything's off with
+its ffmpeg call; `run_pipeline.sh` re-encodes every output file itself so
+that risk doesn't reach you, and `env/verify_gpu.py` checks upfront that your
+ffmpeg build actually has a `libx264` encoder to begin with.
+
+`run_pipeline.sh` probes each video with `ffprobe` and auto-picks a
 `--keyframe_interval` that keeps each inference window under ~1500 real
-frames (the ratio validated in lingbot-map's own long-sequence example). You
-can override anything:
+frames (the ratio validated in lingbot-map's own long-sequence example, and
+confirmed against `batch_demo.py`'s actual window-capacity formula:
+`num_scale_frames + (window_size - num_scale_frames) * keyframe_interval`).
+You can override anything:
 
 ```bash
 # Force parameters instead of auto-estimating
-bash scripts/run_pipeline.sh --video data/office.mp4 --fps 15 --keyframe-interval 3
+bash scripts/run_pipeline.sh --fps 15 --keyframe-interval 3
 
 # Use a different checkpoint or config
-bash scripts/run_pipeline.sh --video data/office.mp4 \
-    --model checkpoints/lingbot-map.pt --config config/office_indoor.yaml
+bash scripts/run_pipeline.sh --model checkpoints/lingbot-map.pt --config config/office_indoor.yaml
 
 # Pass any additional batch_demo.py flag straight through
-bash scripts/run_pipeline.sh --video data/office.mp4 -- --use_sdpa --save_glb
+bash scripts/run_pipeline.sh -- --use_sdpa --save_glb
 ```
 
 ## Camera path
@@ -123,7 +148,7 @@ pip install --no-build-isolation git+https://github.com/NVIDIAGameWorks/kaolin.g
 attention:
 
 ```bash
-bash scripts/run_pipeline.sh --video data/office.mp4 -- --use_sdpa
+bash scripts/run_pipeline.sh -- --use_sdpa
 ```
 
 **Out of memory** — unlikely on a 32GB 5090, but if it happens, per-frame
@@ -131,7 +156,7 @@ CPU offload is already on by default; you can also shrink the scale-frame
 window:
 
 ```bash
-bash scripts/run_pipeline.sh --video data/office.mp4 -- --num_scale_frames 2
+bash scripts/run_pipeline.sh -- --num_scale_frames 2
 ```
 
 **`env/verify_gpu.py` reports a FAIL** — re-run the specific `env/setup.sh`
