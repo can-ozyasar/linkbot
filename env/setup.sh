@@ -76,7 +76,36 @@ EOF
 fi
 
 echo "== Building custom CUDA extensions (voxel_morton_ext, frustum_cull_ext) =="
-(cd "$LINGBOT_MAP_DIR/demo_render/render_cuda_ext" && python setup.py build_ext --inplace)
+CUDA_EXT_DIR="$LINGBOT_MAP_DIR/demo_render/render_cuda_ext"
+if ! (cd "$CUDA_EXT_DIR" && python setup.py build_ext --inplace); then
+    cat >&2 <<'EOF'
+
+WARNING: native CUDA extension build failed. This is usually an
+nvcc-vs-GPU-architecture mismatch: on brand-new GPUs (e.g. RTX 5090 /
+Blackwell / sm_120), the *system* nvcc (as opposed to PyTorch's own bundled
+CUDA runtime) can be too old to know that architecture at all — it fails
+with "nvcc fatal: Unsupported gpu architecture 'compute_120'".
+Retrying with a PTX-forward-compatible target (compiles for sm_90; the
+driver JIT-recompiles that PTX for the actual GPU the first time it loads)...
+EOF
+    rm -rf "$CUDA_EXT_DIR/build"
+    if ! (cd "$CUDA_EXT_DIR" && TORCH_CUDA_ARCH_LIST="9.0+PTX" python setup.py build_ext --inplace); then
+        cat >&2 <<'EOF'
+
+ERROR: CUDA extension build failed even with the PTX fallback.
+Your system nvcc is likely too old for this GPU — check with: nvcc --version
+Install CUDA Toolkit 12.8+ system-wide (NOT "sudo apt install
+nvidia-cuda-toolkit", which tracks an old distro-packaged version) from:
+    https://developer.nvidia.com/cuda-downloads
+then put it first on PATH, e.g.: export PATH=/usr/local/cuda-12.8/bin:$PATH
+Do NOT let its installer touch your NVIDIA driver — you only need the
+toolkit/compiler; the 580.x driver already supports this GPU.
+Re-run this script afterwards; it skips steps that already succeeded.
+EOF
+        exit 1
+    fi
+    echo "NOTE: this same nvcc-too-old issue can also hit FlashInfer's own runtime JIT compilation later (it isn't something this script controls). If FlashInfer errors during the pipeline with a similar 'unsupported gpu architecture' message, the CUDA Toolkit 12.8+ upgrade above is the fix." >&2
+fi
 
 echo "== Downloading lingbot-map-long checkpoint (~several GB) =="
 mkdir -p "$REPO_ROOT/checkpoints"

@@ -135,6 +135,26 @@ for all available modes (`follow`, `birdeye`, `static`, `pivot`).
 
 ## Troubleshooting
 
+**`nvcc fatal: Unsupported gpu architecture 'compute_120'`** — your
+*system* nvcc (`nvcc --version`) is older than CUDA 12.8 and doesn't know
+about Blackwell/`sm_120` yet, even though the driver and PyTorch both
+support the RTX 5090 fine (common if it came from `sudo apt install
+nvidia-cuda-toolkit`, which tracks an old distro-packaged version).
+`env/setup.sh` already retries the custom CUDA extension build with a
+PTX-forward-compatible target (`sm_90`, JIT-recompiled by the driver for
+the actual GPU at first load) when the native build fails, so this
+shouldn't block setup. If the *same* error later shows up from FlashInfer's
+own runtime JIT compilation (outside this script's control), install CUDA
+Toolkit 12.8+ system-wide and put it first on `PATH` — but don't let its
+installer touch your NVIDIA driver, only the toolkit/compiler is needed:
+
+```bash
+# https://developer.nvidia.com/cuda-downloads — pick your distro, then:
+sudo apt-get install -y cuda-toolkit-12-8   # NOT the "cuda" metapackage (pulls a driver)
+export PATH=/usr/local/cuda-12.8/bin:$PATH
+nvcc --version   # should now report release 12.8
+```
+
 **Kaolin prebuilt wheel fails to install** — NVIDIA doesn't always publish
 prebuilt Kaolin kernels for a brand-new GPU architecture (RTX 50-series /
 Blackwell / `sm_120`) immediately. Build from source instead (needs a local
