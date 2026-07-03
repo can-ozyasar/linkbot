@@ -1,0 +1,50 @@
+# Render preset for indoor office walkthroughs, passed to batch_demo.py via --config.
+# Based on lingbot-map's demo_render/config/indoor.yaml, with a follow (chase) camera
+# instead of the upstream default full-sequence birdeye reveal, since a chase cam is
+# more useful for checking room layout / geometry accuracy on a first pass.
+# Switch to birdeye or pivot for a hero/overview shot — see README.md.
+
+scene:
+  voxel_size: 0.001
+  octree_level: 16
+  max_depth: 10.0
+  downsample: 2
+  color_update: first
+  jitter: true
+
+preprocess:
+  mask_sky: false
+  conf_threshold: 0.0
+  vis_threshold: 2.5
+
+camera:
+  fov: 60.0
+  transition: 30
+  segments:
+    - mode: follow
+      frames: [0, -1]
+      back_offset: 0.3
+      up_offset: 0.08
+      look_offset: 0.4
+      smooth_window: 30
+
+render:
+  width: 1920
+  height: 1080
+  point_size: 1.0
+  near: 0.05
+  far: 100.0
+  background: '#2b2b2b'
+  depth_video: false
+  depth_colormap: turbo
+  depth_percentile_lo: 1.0
+  depth_percentile_hi: 99.0
+
+pipeline:
+  fps: 30
+  num_workers: 8
+
+gpu:
+  build_batch_size: 0
+  cull_chunk_size: 0
+  memory_limit_gb: 30

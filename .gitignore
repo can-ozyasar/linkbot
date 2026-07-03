@@ -1,0 +1,33 @@
+# Cloned upstream source (pinned in env/setup.sh, not vendored in git)
+third_party/
+
+# Model checkpoints
+checkpoints/
+*.pt
+*.onnx
+
+# Input footage and rendered output (never commit office video)
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.MP4
+*.MOV
+
+# Sky mask caches
+*_sky_masks/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Conda
+env/conda-meta/
+
+# OS
+.DS_Store
