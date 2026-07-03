@@ -140,18 +140,34 @@ for all available modes (`follow`, `birdeye`, `static`, `pivot`).
 about Blackwell/`sm_120` yet, even though the driver and PyTorch both
 support the RTX 5090 fine (common if it came from `sudo apt install
 nvidia-cuda-toolkit`, which tracks an old distro-packaged version).
-`env/setup.sh` already retries the custom CUDA extension build with a
+`env/setup.sh` retries the custom CUDA extension build with a
 PTX-forward-compatible target (`sm_90`, JIT-recompiled by the driver for
-the actual GPU at first load) when the native build fails, so this
-shouldn't block setup. If the *same* error later shows up from FlashInfer's
-own runtime JIT compilation (outside this script's control), install CUDA
-Toolkit 12.8+ system-wide and put it first on `PATH` — but don't let its
-installer touch your NVIDIA driver, only the toolkit/compiler is needed:
+the actual GPU at first load) when the native build fails.
+
+**`identifier "__builtin_dynamic_object_size" is undefined`** (errors
+inside glibc headers like `stdlib.h`, `string_fortified.h`, `wchar2.h`,
+`stdio2.h`) — a *second*, independent nvcc-too-old symptom seen on Ubuntu
+24.04+ (glibc >= 2.39): nvcc releases before CUDA 12.4 can't parse glibc's
+newer fortified headers at all, regardless of GPU architecture.
+`env/setup.sh` retries once more with `-D_FORTIFY_SOURCE=0` (via
+`NVCC_APPEND_FLAGS`) when this happens.
+
+If your system nvcc hits *both* of the above, that's a strong signal it's
+simply too old for this machine (Ubuntu 24.04 + RTX 5090) and workarounds
+will keep surfacing new gaps — e.g. FlashInfer's own runtime JIT compilation
+uses the same system nvcc and isn't something this script can patch around.
+The durable fix is installing CUDA Toolkit 12.8+ system-wide and putting it
+first on `PATH` — but don't let its installer touch your NVIDIA driver,
+only the toolkit/compiler is needed:
 
 ```bash
-# https://developer.nvidia.com/cuda-downloads — pick your distro, then:
+# https://developer.nvidia.com/cuda-downloads — pick Ubuntu 24.04 / x86_64, or:
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt-get update
 sudo apt-get install -y cuda-toolkit-12-8   # NOT the "cuda" metapackage (pulls a driver)
 export PATH=/usr/local/cuda-12.8/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
 nvcc --version   # should now report release 12.8
 ```
 

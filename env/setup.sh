@@ -80,11 +80,10 @@ CUDA_EXT_DIR="$LINGBOT_MAP_DIR/demo_render/render_cuda_ext"
 if ! (cd "$CUDA_EXT_DIR" && python setup.py build_ext --inplace); then
     cat >&2 <<'EOF'
 
-WARNING: native CUDA extension build failed. This is usually an
-nvcc-vs-GPU-architecture mismatch: on brand-new GPUs (e.g. RTX 5090 /
-Blackwell / sm_120), the *system* nvcc (as opposed to PyTorch's own bundled
-CUDA runtime) can be too old to know that architecture at all — it fails
-with "nvcc fatal: Unsupported gpu architecture 'compute_120'".
+WARNING: native CUDA extension build failed. On brand-new GPUs (e.g. RTX
+5090 / Blackwell / sm_120), the *system* nvcc (as opposed to PyTorch's own
+bundled CUDA runtime) can be too old to know that architecture at all —
+"nvcc fatal: Unsupported gpu architecture 'compute_120'".
 Retrying with a PTX-forward-compatible target (compiles for sm_90; the
 driver JIT-recompiles that PTX for the actual GPU the first time it loads)...
 EOF
@@ -92,19 +91,37 @@ EOF
     if ! (cd "$CUDA_EXT_DIR" && TORCH_CUDA_ARCH_LIST="9.0+PTX" python setup.py build_ext --inplace); then
         cat >&2 <<'EOF'
 
-ERROR: CUDA extension build failed even with the PTX fallback.
-Your system nvcc is likely too old for this GPU — check with: nvcc --version
+WARNING: PTX fallback also failed. On Ubuntu 24.04+ (glibc >= 2.39), nvcc
+releases older than CUDA 12.4 can't parse glibc's fortified headers at all
+("identifier '__builtin_dynamic_object_size' is undefined" inside
+stdlib.h/string_fortified.h/wchar2.h/etc — unrelated to GPU architecture).
+Retrying once more with fortification disabled for this build only...
+EOF
+        rm -rf "$CUDA_EXT_DIR/build"
+        if ! (cd "$CUDA_EXT_DIR" && TORCH_CUDA_ARCH_LIST="9.0+PTX" NVCC_APPEND_FLAGS="-D_FORTIFY_SOURCE=0" python setup.py build_ext --inplace); then
+            cat >&2 <<'EOF'
+
+ERROR: CUDA extension build failed on all three attempts (native, PTX
+fallback, PTX + fortify workaround). Your system nvcc is too old for this
+machine — check with: nvcc --version (anything below 12.4 is suspect on
+Ubuntu 24.04; below 12.8 is suspect for an RTX 5090's sm_120).
 Install CUDA Toolkit 12.8+ system-wide (NOT "sudo apt install
-nvidia-cuda-toolkit", which tracks an old distro-packaged version) from:
-    https://developer.nvidia.com/cuda-downloads
-then put it first on PATH, e.g.: export PATH=/usr/local/cuda-12.8/bin:$PATH
-Do NOT let its installer touch your NVIDIA driver — you only need the
-toolkit/compiler; the 580.x driver already supports this GPU.
+nvidia-cuda-toolkit", which tracks an old distro-packaged version):
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+    sudo dpkg -i cuda-keyring_1.1-1_all.deb
+    sudo apt-get update
+    sudo apt-get install -y cuda-toolkit-12-8   # NOT the "cuda" metapackage (pulls a driver)
+    echo 'export PATH=/usr/local/cuda-12.8/bin:$PATH' >> ~/.bashrc
+    echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+    source ~/.bashrc
+Do NOT let the installer touch your NVIDIA driver — only the toolkit/
+compiler is needed; your existing driver already supports this GPU.
 Re-run this script afterwards; it skips steps that already succeeded.
 EOF
-        exit 1
+            exit 1
+        fi
     fi
-    echo "NOTE: this same nvcc-too-old issue can also hit FlashInfer's own runtime JIT compilation later (it isn't something this script controls). If FlashInfer errors during the pipeline with a similar 'unsupported gpu architecture' message, the CUDA Toolkit 12.8+ upgrade above is the fix." >&2
+    echo "NOTE: this same nvcc-too-old issue can also hit FlashInfer's own runtime JIT compilation later (it isn't something this script controls). If FlashInfer errors during the pipeline with a similar message, the CUDA Toolkit 12.8+ upgrade above is the fix." >&2
 fi
 
 echo "== Downloading lingbot-map-long checkpoint (~several GB) =="
